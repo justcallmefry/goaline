@@ -439,7 +439,7 @@ function PlanLane({ lane, tools, agencies, onAdd, onDelete, onEdit, onUpdateBudg
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Empty Stage</p>
                     </div>
                 )}
-                {lane.items.map((tactic) => (
+                {lane.items.map((tactic: any) => (
                     <SortableTacticCard key={tactic.id} tactic={tactic} tools={tools} agencies={agencies} onDelete={onDelete} onEdit={onEdit} onUpdateBudget={onUpdateBudget} onOpenTool={onOpenTool} onOpenAgency={onOpenAgency} />
                 ))}
               </div>
