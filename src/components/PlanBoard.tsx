@@ -431,7 +431,7 @@ function PlanLane({ lane, tools, agencies, onAdd, onDelete, onEdit, onUpdateBudg
           </div>
           
           <div className="flex-1 p-4 overflow-y-auto custom-scrollbar min-h-[200px] md:min-h-0">
-            <SortableContext items={lane.items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={lane.items.map((i: any) => i.id)} strategy={verticalListSortingStrategy}>
               <div className="flex flex-col pb-2">
                 {lane.items.length === 0 && (
                     <div className="h-40 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl">
