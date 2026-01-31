@@ -1,4 +1,5 @@
-import PlanBoard, { Lane } from '@/components/PlanBoard';
+import PlanBoard from '@/components/PlanBoard';
+import { Lane } from '@/types';
 import { createClient } from '@/utils/supabase/server'; 
 
 export default async function Home() {
