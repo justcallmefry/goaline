@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, PenTool, Users, FileText, Settings, 
-  Plus, Search, Edit2, Trash2, ExternalLink, Loader2, BadgeCheck, MapPin, Clock, ArrowRight
+  Plus, Search, Edit2, Trash2, ExternalLink, Loader2, BadgeCheck, MapPin, Clock, Activity
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -14,6 +14,7 @@ import { AdminTacticModal } from './modals/AdminTacticModal';
 
 // TABS
 import AdminApprovalsTab from './tabs/AdminApprovalsTab';
+import AdminInsightsTab from './tabs/AdminInsightsTab';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -176,6 +177,7 @@ export default function AdminDashboard() {
         
         <nav className="flex-1 px-4 space-y-2">
           <NavButton icon={<LayoutDashboard size={18} />} label="Overview" active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} />
+          <NavButton icon={<Activity size={18} />} label="Insights" active={activeTab === 'insights'} onClick={() => setActiveTab('insights')} />
           <NavButton icon={<Clock size={18} />} label="Approvals" active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} badge={stats.approvals} />
           <NavButton icon={<PenTool size={18} />} label="Tools & Affiliates" active={activeTab === 'tools'} onClick={() => setActiveTab('tools')} />
           <NavButton icon={<Users size={18} />} label="Agencies" active={activeTab === 'agencies'} onClick={() => setActiveTab('agencies')} />
@@ -202,10 +204,11 @@ export default function AdminDashboard() {
                  activeTab === 'tools' ? 'Tools & Affiliates' : 
                  activeTab === 'tactics' ? 'Tactics Library' : 
                  activeTab === 'approvals' ? 'Submission Approvals' :
+                 activeTab === 'insights' ? 'Intelligence Engine' :
                  activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
             </h2>
             
-            {activeTab !== 'overview' && activeTab !== 'settings' && activeTab !== 'approvals' && (
+            {activeTab !== 'overview' && activeTab !== 'settings' && activeTab !== 'approvals' && activeTab !== 'insights' && (
                 <button onClick={openCreateModal} className={`flex items-center gap-2 text-white px-5 py-2.5 rounded-lg font-bold text-xs uppercase tracking-widest transition-all shadow-lg cursor-pointer ${getButtonColor()}`}>
                     <Plus size={16} /> Add Item
                 </button>
@@ -213,10 +216,11 @@ export default function AdminDashboard() {
         </header>
 
         <div className="p-8">
+            {/* --- INSIGHTS TAB (NEW) --- */}
+            {activeTab === 'insights' && <AdminInsightsTab />}
+
             {/* --- APPROVALS TAB --- */}
-            {activeTab === 'approvals' && (
-                <AdminApprovalsTab />
-            )}
+            {activeTab === 'approvals' && <AdminApprovalsTab />}
 
             {/* --- OVERVIEW TAB --- */}
             {activeTab === 'overview' && (

@@ -11,6 +11,7 @@ import {
 import { createClient } from '@supabase/supabase-js';
 import { generateMarketingPlan, generateTacticContent } from '@/app/actions';
 import jsPDF from 'jspdf';
+import { logActivity } from '@/lib/logger'; // <--- IMPORT THE LOGGER
 
 // --- TYPES & COMPONENTS ---
 import { Tactic, Lane, LibraryTactic, Tool, Agency } from '@/types';
@@ -21,7 +22,7 @@ import { TourGuide } from '@/components/modals/TourGuide';
 import { LoginScreen } from '@/components/LoginScreen';
 import { SettingsModal } from '@/components/modals/SettingsModal';
 
-// --- MODALS (ALL EXTRACTED) ---
+// --- MODALS ---
 import { TacticAddModal, TacticEditModal, DeleteModal } from '@/components/modals/TacticModals';
 import { WelcomeWizard } from '@/components/modals/WelcomeWizard';
 import { LaneInfoModal } from '@/components/modals/LaneInfoModal';
@@ -97,10 +98,10 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
   const [isAIGenerating, setIsAIGenerating] = useState(false); 
   const [isWriting, setIsWriting] = useState(false);
 
-  // Submission State (NEW)
+  // Submission State
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null); // NEW
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
 
   // Admin Form State
   const [adminTacticName, setAdminTacticName] = useState('');
@@ -123,7 +124,6 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
   useEffect(() => {
     if (!session) return; 
     async function fetchData() {
-      // Only fetch APPROVED items for the public library view
       const { data: libData } = await supabase.from('tactics_library').select('*').eq('status', 'approved');
       if (libData) setLibrary(libData);
       
@@ -161,6 +161,10 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
 
   const handleWizardSubmit = async (e: React.FormEvent) => {
       e.preventDefault(); if (!wizardInput.trim()) return; setIsWizardGenerating(true);
+      
+      // LOG WIZARD USAGE
+      logActivity(session.user.id, 'wizard_generate', { prompt_length: wizardInput.length });
+
       const suggestions = await generateMarketingPlan(wizardInput);
       if (suggestions?.length > 0) {
           const laneIds = lanes.map(l => l.id);
@@ -185,6 +189,10 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
 
   async function addFromLibrary(libTactic: LibraryTactic, targetLaneId?: string, targetIndex?: number) {
     if (!session) return; setSyncStatus('saving');
+    
+    // LOG LIBRARY USAGE
+    logActivity(session.user.id, 'use_template', { template_id: libTactic.id, template_title: libTactic.title });
+
     const laneIdToUse = targetLaneId || lanes[0].id;
     const newId = crypto.randomUUID();
     const newTactic: Tactic = { id: newId, title: libTactic.title, budget: libTactic.default_budget, content: libTactic.description };
@@ -208,11 +216,14 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
 
   async function handleAutoWrite() {
     if (!tacticName) return; setIsWriting(true);
+    
+    // LOG AI USAGE
+    logActivity(session.user.id, 'ai_content_write', { tactic_title: tacticName });
+
     const text = await generateTacticContent(tacticName, tacticBudget);
     setTacticContent(text); setIsWriting(false);
   }
 
-  // --- NEW: SUBMIT TO LIBRARY (With HTML Alerts) ---
   async function handleSubmitToLibrary() {
       if (!editingTactic || !tacticName) return;
       setIsSubmitting(true);
@@ -227,17 +238,19 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
           description: tacticContent,
           default_budget: tacticBudget,
           category: category,
-          status: 'pending', // Queue for Admin Approval
+          status: 'pending',
           submitted_by: session.user.id
       });
       
+      // LOG SUBMISSION
+      logActivity(session.user.id, 'submit_tactic', { title: tacticName, category });
+
       setIsSubmitting(false);
       
       if (error) {
           setSubmitError(error.message || "Failed to submit. Please try again.");
       } else {
           setSubmitSuccess("Successfully submitted for review!");
-          // Wait 2 seconds so user sees the success message, then close
           setTimeout(() => {
               setIsEditModalOpen(false);
               setSubmitSuccess(null);
@@ -246,6 +259,7 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
   }
 
   function downloadPDF() {
+    logActivity(session.user.id, 'download_pdf', { total_budget: totalBudget });
     setIsDownloading(true); const doc = new jsPDF();
     doc.setFont("helvetica", "bold"); doc.setFontSize(22); doc.text(profile?.business_name ? `${profile.business_name} Growth Plan` : "Growth Strategy Plan", 20, 20);
     doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(100); doc.text(`Q1 Strategy Report • ${new Date().toLocaleDateString()}`, 20, 26);
@@ -271,6 +285,10 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
 
   async function handleAIGenerate(e: React.FormEvent) {
     if (!session) return; e.preventDefault(); if (!businessDesc.trim()) return; setIsAIGenerating(true);
+    
+    // LOG STRATEGIST USAGE
+    logActivity(session.user.id, 'ai_strategist_query', { prompt: businessDesc });
+
     const suggestions = await generateMarketingPlan(businessDesc);
     if (suggestions?.length > 0) {
       const targetLane = lanes[0]; const newItems = suggestions.map((s: any) => ({ id: crypto.randomUUID(), title: s.title, budget: s.budget, content: '' }));
@@ -287,7 +305,7 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
       setTacticBudget(tactic.budget); 
       setTacticContent(tactic.content || ''); 
       setSubmitError(null); 
-      setSubmitSuccess(null); // Reset success state
+      setSubmitSuccess(null); 
       setIsEditModalOpen(true); 
   }
   
@@ -416,7 +434,7 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
 
         {/* LANES */}
         <div className="flex-1 flex flex-col md:flex-row gap-8 overflow-y-auto md:overflow-x-auto px-4 md:px-8 py-8 items-start w-full bg-slate-200 custom-scrollbar" onClick={() => setShowProfileMenu(false)}>
-            {lanes.map((lane) => <PlanLane key={lane.id} lane={lane} tools={tools} agencies={agencies} onAdd={openAddModal} onDelete={openDeleteModal} onEdit={openEditModal} onUpdateBudget={updateTacticBudget} onOpenTool={setSelectedTool} onOpenAgency={setSelectedAgency} onOpenLaneInfo={setLaneInfoTitle} />)}
+            {lanes.map((lane) => <PlanLane key={lane.id} lane={lane} tools={tools} agencies={agencies} onAdd={openAddModal} onDelete={openDeleteModal} onEdit={openEditModal} onUpdateBudget={updateTacticBudget} onOpenTool={(tool) => { logActivity(session.user.id, 'view_tool', { name: tool.name }); setSelectedTool(tool); }} onOpenAgency={setSelectedAgency} onOpenLaneInfo={setLaneInfoTitle} />)}
         </div>
         
         <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.4' } } }) }}>
@@ -454,7 +472,7 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
         onSubmitLibrary={handleSubmitToLibrary} 
         isSubmitting={isSubmitting} 
         submitError={submitError}
-        submitSuccess={submitSuccess} // <--- NEW PROP
+        submitSuccess={submitSuccess} 
       />
       
       <DeleteModal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} onConfirm={confirmDelete} />
