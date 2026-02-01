@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  DndContext, DragEndEvent, DragStartEvent, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor, defaultDropAnimationSideEffects, DropAnimation
+  DndContext, DragEndEvent, DragStartEvent, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor, defaultDropAnimationSideEffects
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { 
@@ -11,7 +11,7 @@ import {
 import { createClient } from '@supabase/supabase-js';
 import { generateMarketingPlan, generateTacticContent } from '@/app/actions';
 import jsPDF from 'jspdf';
-import { logActivity } from '@/lib/logger'; // <--- IMPORT THE LOGGER
+import { logActivity } from '@/lib/logger';
 
 // --- TYPES & COMPONENTS ---
 import { Tactic, Lane, LibraryTactic, Tool, Agency } from '@/types';
@@ -121,9 +121,11 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // --- DATA FETCHING (Corrected to fix missing tactics) ---
   useEffect(() => {
-    if (!session) return; 
+    if (!session?.user) return; 
     async function fetchData() {
+      // 1. Fetch Library, Tools, Agencies
       const { data: libData } = await supabase.from('tactics_library').select('*').eq('status', 'approved');
       if (libData) setLibrary(libData);
       
@@ -133,19 +135,47 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
       const { data: agencyData } = await supabase.from('agencies').select('*').eq('status', 'approved');
       if (agencyData) setAgencies(agencyData);
       
-      const { data: userItems } = await supabase.from('plan_items').select('*');
-      if (!userItems || userItems.length === 0) {
-          setShowWelcomeWizard(true);
-      } else {
-          setLanes(initialLanes.map(lane => ({
-              ...lane,
-              items: userItems.filter((i: any) => i.section_id === lane.id).map((i: any) => ({
-                  id: i.id, title: i.custom_notes || 'Untitled', budget: i.allocated_budget || 0, content: i.content
-              }))
-          })));
-      }
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
       if (profileData) { setProfile(profileData); setIsAdmin(!!profileData.is_admin); }
+
+      // 2. FETCH REAL SECTIONS FROM DB
+      // We must fetch sections to get the correct IDs that match the items
+      let { data: dbSections } = await supabase.from('plan_sections').select('*').order('order_index');
+      
+      // If user has no sections (new user), create defaults
+      if (!dbSections || dbSections.length === 0) {
+          const defaults = [
+              { title: 'Awareness', order_index: 0, user_id: session.user.id },
+              { title: 'Conversion', order_index: 1, user_id: session.user.id },
+              { title: 'Retention', order_index: 2, user_id: session.user.id }
+          ];
+          const { data: newSections } = await supabase.from('plan_sections').insert(defaults).select();
+          if (newSections) dbSections = newSections;
+      }
+
+      // 3. Fetch Items
+      const { data: userItems } = await supabase.from('plan_items').select('*');
+      
+      if (!userItems || userItems.length === 0) {
+          setShowWelcomeWizard(true);
+      } 
+      
+      // 4. Build Lanes using REAL DB IDs
+      if (dbSections && dbSections.length > 0) {
+          setLanes(dbSections.map((section: any) => ({
+              id: section.id,
+              title: section.title,
+              items: userItems?.filter((i: any) => i.section_id === section.id).map((i: any) => ({
+                  id: i.id, 
+                  title: i.custom_notes || 'Untitled', 
+                  budget: i.allocated_budget || 0, 
+                  content: i.content
+              })) || []
+          })));
+      } else {
+          // Fallback if something fails drastically
+          setLanes(initialLanes);
+      }
     }
     fetchData();
   }, [session, initialLanes]);
@@ -157,14 +187,22 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
     });
   }, [library, librarySearch, selectedCategory]);
 
+  useEffect(() => {
+      if (librarySearch.length > 2 && filteredLibrary.length === 0 && session?.user) {
+          const timer = setTimeout(() => {
+              logActivity(session.user.id, 'ghost_search', { query: librarySearch });
+          }, 1500); 
+          return () => clearTimeout(timer);
+      }
+  }, [librarySearch, filteredLibrary, session]);
+
   const handleSignOut = async () => { await supabase.auth.signOut(); setSession(null); };
 
   const handleWizardSubmit = async (e: React.FormEvent) => {
-      e.preventDefault(); if (!wizardInput.trim()) return; setIsWizardGenerating(true);
-      
-      // LOG WIZARD USAGE
-      logActivity(session.user.id, 'wizard_generate', { prompt_length: wizardInput.length });
-
+      e.preventDefault(); 
+      if (!wizardInput.trim() || !session?.user) return; 
+      setIsWizardGenerating(true);
+      logActivity(session.user.id, 'wizard_generate', { prompt: wizardInput, prompt_length: wizardInput.length }); 
       const suggestions = await generateMarketingPlan(wizardInput);
       if (suggestions?.length > 0) {
           const laneIds = lanes.map(l => l.id);
@@ -188,11 +226,9 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
   };
 
   async function addFromLibrary(libTactic: LibraryTactic, targetLaneId?: string, targetIndex?: number) {
-    if (!session) return; setSyncStatus('saving');
-    
-    // LOG LIBRARY USAGE
-    logActivity(session.user.id, 'use_template', { template_id: libTactic.id, template_title: libTactic.title });
-
+    if (!session?.user) return; 
+    setSyncStatus('saving');
+    logActivity(session.user.id, 'use_template', { template_id: libTactic.id, template_title: libTactic.title, category: libTactic.category }); 
     const laneIdToUse = targetLaneId || lanes[0].id;
     const newId = crypto.randomUUID();
     const newTactic: Tactic = { id: newId, title: libTactic.title, budget: libTactic.default_budget, content: libTactic.description };
@@ -209,57 +245,44 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
 
   async function updateTacticBudget(tacticId: string, newBudget: number) {
     setSyncStatus('saving');
+    if (session?.user) {
+        const parentLane = lanes.find(l => l.items.some(i => i.id === tacticId));
+        const item = parentLane?.items.find(i => i.id === tacticId);
+        if (parentLane && item) {
+           logActivity(session.user.id, 'budget_allocation', { category: parentLane.title, item: item.title, amount: newBudget });
+        }
+    }
     setLanes(prev => prev.map(lane => ({ ...lane, items: lane.items.map(item => item.id === tacticId ? { ...item, budget: newBudget } : item) })));
     const { error } = await supabase.from('plan_items').update({ allocated_budget: newBudget }).eq('id', tacticId);
     if (error) setSyncStatus('error'); else setTimeout(() => setSyncStatus('synced'), 600);
   }
 
   async function handleAutoWrite() {
-    if (!tacticName) return; setIsWriting(true);
-    
-    // LOG AI USAGE
+    if (!tacticName || !session?.user) return; 
+    setIsWriting(true);
     logActivity(session.user.id, 'ai_content_write', { tactic_title: tacticName });
-
     const text = await generateTacticContent(tacticName, tacticBudget);
     setTacticContent(text); setIsWriting(false);
   }
 
   async function handleSubmitToLibrary() {
-      if (!editingTactic || !tacticName) return;
+      if (!editingTactic || !tacticName || !session?.user) return; 
       setIsSubmitting(true);
       setSubmitError(null);
       setSubmitSuccess(null);
-      
       const parentLane = lanes.find(l => l.items.some(i => i.id === editingTactic.id));
       const category = parentLane ? parentLane.title : 'General';
-      
       const { error } = await supabase.from('tactics_library').insert({
-          title: tacticName,
-          description: tacticContent,
-          default_budget: tacticBudget,
-          category: category,
-          status: 'pending',
-          submitted_by: session.user.id
+          title: tacticName, description: tacticContent, default_budget: tacticBudget, category: category, status: 'pending', submitted_by: session.user.id
       });
-      
-      // LOG SUBMISSION
-      logActivity(session.user.id, 'submit_tactic', { title: tacticName, category });
-
+      logActivity(session.user.id, 'submit_tactic', { title: tacticName, category }); 
       setIsSubmitting(false);
-      
-      if (error) {
-          setSubmitError(error.message || "Failed to submit. Please try again.");
-      } else {
-          setSubmitSuccess("Successfully submitted for review!");
-          setTimeout(() => {
-              setIsEditModalOpen(false);
-              setSubmitSuccess(null);
-          }, 2000);
-      }
+      if (error) { setSubmitError(error.message || "Failed to submit. Please try again."); } 
+      else { setSubmitSuccess("Successfully submitted for review!"); setTimeout(() => { setIsEditModalOpen(false); setSubmitSuccess(null); }, 2000); }
   }
 
   function downloadPDF() {
-    logActivity(session.user.id, 'download_pdf', { total_budget: totalBudget });
+    if (session?.user) logActivity(session.user.id, 'download_pdf', { total_budget: totalBudget });
     setIsDownloading(true); const doc = new jsPDF();
     doc.setFont("helvetica", "bold"); doc.setFontSize(22); doc.text(profile?.business_name ? `${profile.business_name} Growth Plan` : "Growth Strategy Plan", 20, 20);
     doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(100); doc.text(`Q1 Strategy Report • ${new Date().toLocaleDateString()}`, 20, 26);
@@ -284,11 +307,9 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
   }
 
   async function handleAIGenerate(e: React.FormEvent) {
-    if (!session) return; e.preventDefault(); if (!businessDesc.trim()) return; setIsAIGenerating(true);
-    
-    // LOG STRATEGIST USAGE
-    logActivity(session.user.id, 'ai_strategist_query', { prompt: businessDesc });
-
+    if (!session?.user) return; 
+    e.preventDefault(); if (!businessDesc.trim()) return; setIsAIGenerating(true);
+    logActivity(session.user.id, 'ai_strategist_query', { prompt: businessDesc }); 
     const suggestions = await generateMarketingPlan(businessDesc);
     if (suggestions?.length > 0) {
       const targetLane = lanes[0]; const newItems = suggestions.map((s: any) => ({ id: crypto.randomUUID(), title: s.title, budget: s.budget, content: '' }));
@@ -300,17 +321,13 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
 
   function openAddModal(laneId: string) { setTargetLaneId(laneId); setTacticName(''); setTacticBudget(0); setTacticContent(''); setIsAddModalOpen(true); }
   function openEditModal(tactic: Tactic) { 
-      setEditingTactic(tactic); 
-      setTacticName(tactic.title); 
-      setTacticBudget(tactic.budget); 
-      setTacticContent(tactic.content || ''); 
-      setSubmitError(null); 
-      setSubmitSuccess(null); 
-      setIsEditModalOpen(true); 
+      setEditingTactic(tactic); setTacticName(tactic.title); setTacticBudget(tactic.budget); setTacticContent(tactic.content || ''); 
+      setSubmitError(null); setSubmitSuccess(null); setIsEditModalOpen(true); 
   }
   
   async function submitAddTactic(e: React.FormEvent) { 
-      if (!session) return; e.preventDefault(); if (!targetLaneId || !tacticName.trim()) return; setSyncStatus('saving'); 
+      if (!session?.user) return; 
+      e.preventDefault(); if (!targetLaneId || !tacticName.trim()) return; setSyncStatus('saving'); 
       const newId = crypto.randomUUID(); const newTactic: Tactic = { id: newId, title: tacticName, budget: tacticBudget, content: '' }; 
       setLanes(prev => prev.map(lane => { if (lane.id === targetLaneId) return { ...lane, items: [...lane.items, newTactic] }; return lane; })); 
       await supabase.from('plan_items').insert({ id: newId, section_id: targetLaneId, custom_notes: tacticName, allocated_budget: tacticBudget, user_id: session.user.id }); 
@@ -325,7 +342,16 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
   }
 
   function openDeleteModal(tacticId: string) { setTacticToDelete(tacticId); setIsDeleteModalOpen(true); }
-  async function confirmDelete() { if (!tacticToDelete) return; setSyncStatus('saving'); setLanes(prev => prev.map(lane => ({ ...lane, items: lane.items.filter(item => item.id !== tacticToDelete) }))); await supabase.from('plan_items').delete().eq('id', tacticToDelete); setSyncStatus('synced'); setIsDeleteModalOpen(false); setTacticToDelete(null); }
+  
+  async function confirmDelete() { 
+      if (!tacticToDelete) return; 
+      setSyncStatus('saving'); 
+      const tactic = lanes.flatMap(l => l.items).find(i => i.id === tacticToDelete);
+      if (tactic && session?.user) logActivity(session.user.id, 'delete_item', { title: tactic.title, budget: tactic.budget });
+      setLanes(prev => prev.map(lane => ({ ...lane, items: lane.items.filter(item => item.id !== tacticToDelete) }))); 
+      await supabase.from('plan_items').delete().eq('id', tacticToDelete); 
+      setSyncStatus('synced'); setIsDeleteModalOpen(false); setTacticToDelete(null); 
+  }
   
   function handleDragStart(event: DragStartEvent) { 
       const { active } = event; if (active.data.current?.type === 'library') { setActiveLibraryItem(active.data.current.item); return; }
@@ -363,8 +389,8 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
   if (!mounted || loadingSession) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white"><Loader2 className="animate-spin" /></div>;
   if (!session) return <LoginScreen />;
 
-  const userAvatar = session.user.user_metadata?.avatar_url;
-  const userName = session.user.user_metadata?.full_name || 'My Account';
+  const userAvatar = session?.user?.user_metadata?.avatar_url;
+  const userName = session?.user?.user_metadata?.full_name || 'My Account';
   const displayLogo = profile?.logo_url || null;
 
   return (
@@ -404,7 +430,7 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
                              <div className="text-left hidden sm:block"><div className="text-[10px] font-bold text-slate-900 leading-none mb-0.5 flex items-center gap-1">{userName} {isAdmin && <ShieldCheck size={10} className="text-indigo-600" />}</div><div className="text-[9px] font-medium text-slate-400 leading-none">Settings</div></div>
                           </button>
                           {showProfileMenu && <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-200">
-                                 <div className="px-4 py-2 border-b border-slate-50"><p className="text-xs font-bold text-slate-900 truncate">{session.user.email}</p>{isAdmin && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded mt-1 inline-block">ADMIN ACCESS</span>}</div>
+                                 <div className="px-4 py-2 border-b border-slate-50"><p className="text-xs font-bold text-slate-900 truncate">{session?.user?.email}</p>{isAdmin && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded mt-1 inline-block">ADMIN ACCESS</span>}</div>
                                  <button onClick={() => { setIsSettingsOpen(true); setShowProfileMenu(false); }} className="w-full text-left px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-indigo-600 transition-colors flex items-center gap-2 cursor-pointer"><Settings size={14} /> Account Settings</button>
                                  <button onClick={() => { setIsTourActive(true); setTourStepIndex(0); setShowProfileMenu(false); }} className="hidden md:flex w-full text-left px-4 py-2 text-xs font-medium text-indigo-600 hover:bg-indigo-50 transition-colors items-center gap-2 cursor-pointer"><HelpCircle size={14} /> Restart Tour</button>
                                  <button onClick={handleSignOut} className="w-full text-left px-4 py-2 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors flex items-center gap-2 cursor-pointer"><LogOut size={14} /> Sign Out</button>
@@ -434,7 +460,7 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
 
         {/* LANES */}
         <div className="flex-1 flex flex-col md:flex-row gap-8 overflow-y-auto md:overflow-x-auto px-4 md:px-8 py-8 items-start w-full bg-slate-200 custom-scrollbar" onClick={() => setShowProfileMenu(false)}>
-            {lanes.map((lane) => <PlanLane key={lane.id} lane={lane} tools={tools} agencies={agencies} onAdd={openAddModal} onDelete={openDeleteModal} onEdit={openEditModal} onUpdateBudget={updateTacticBudget} onOpenTool={(tool) => { logActivity(session.user.id, 'view_tool', { name: tool.name }); setSelectedTool(tool); }} onOpenAgency={setSelectedAgency} onOpenLaneInfo={setLaneInfoTitle} />)}
+            {lanes.map((lane) => <PlanLane key={lane.id} lane={lane} tools={tools} agencies={agencies} onAdd={openAddModal} onDelete={openDeleteModal} onEdit={openEditModal} onUpdateBudget={updateTacticBudget} onOpenTool={(tool) => { if(session?.user) logActivity(session.user.id, 'view_tool', { name: tool.name }); setSelectedTool(tool); }} onOpenAgency={setSelectedAgency} onOpenLaneInfo={setLaneInfoTitle} />)}
         </div>
         
         <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.4' } } }) }}>

@@ -7,7 +7,7 @@ const supabase = createClient(
 
 export async function logActivity(userId: string, action: string, details: any = {}) {
   try {
-    // Fire and forget - don't await this, so the UI stays snappy
+    // Fire and forget
     supabase.from('activity_logs').insert({
       user_id: userId,
       action_type: action,
