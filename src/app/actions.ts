@@ -6,71 +6,65 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function generateMarketingPlan(description: string) {
-  if (!description) return [];
-
-  console.log("Asking OpenAI for plan...");
+// 1. GENERATE FULL BOARD STRATEGY
+export async function generateMarketingPlan(prompt: string) {
+  if (!process.env.OPENAI_API_KEY) return [];
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Fast, cheap, and smart
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-turbo",
       messages: [
-        {
-          role: "system",
-          content: `You are a Growth Marketing expert. 
-          Generate 5 specific, high-impact marketing tactics for the user's business.
-          Return ONLY a raw JSON array. No markdown, no explanations.
-          Format: [{"title": "Tactic Name", "budget": 1000}, ...]
-          Keep titles under 6 words. Budgets should be realistic estimates based on the business type.`
+        { 
+          role: "system", 
+          content: "You are an expert Chief Marketing Officer. Generate 3-5 high-impact growth tactics based on the user's business description. Return a valid JSON array of objects with keys: 'title', 'budget' (number), 'section' (one of: 'awareness', 'conversion', 'retention'), 'rationale', and 'action'." 
         },
-        {
-          role: "user",
-          content: description,
-        },
+        { role: "user", content: prompt }
       ],
+      response_format: { type: "json_object" }
     });
 
-    const content = completion.choices[0].message.content;
-    
-    if (!content) return [];
-
-    // Clean up if GPT adds markdown code blocks (it loves to do that)
-    const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(cleanJson);
-    
+    const content = response.choices[0].message.content;
+    const result = JSON.parse(content || "{}");
+    return result.tactics || result.items || [];
   } catch (e) {
-    console.error("Failed to generate plan:", e);
+    console.error("AI Error:", e);
     return [];
   }
 }
-// ... keep generateMarketingPlan above ...
 
-export async function generateTacticContent(tacticTitle: string, budget: number) {
-  if (!tacticTitle) return "";
+// 2. GENERATE TACTIC CONTENT (The Auto-Writer)
+export async function generateTacticContent(tacticTitle: string, budget: number, instructions: string = '') {
+  if (!process.env.OPENAI_API_KEY) {
+    return "Error: OpenAI API Key is missing. Please add it to your .env.local file.";
+  }
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    const prompt = `
+      You are an expert copywriter and strategist.
+      
+      The Tactic: "${tacticTitle}"
+      The Budget: $${budget}
+      User Instructions: "${instructions}"
+
+      Please write the content for this tactic card.
+      1. If the user asked for ad copy, write the Headline, Body Text, and CTA.
+      2. If the user asked for an image, describe the image vividly.
+      3. If no specific instructions, outline the execution steps.
+      
+      Keep it professional, actionable, and formatted clearly.
+    `;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-turbo",
       messages: [
-        {
-          role: "system",
-          content: `You are a professional Copywriter. 
-          The user has a marketing tactic called "${tacticTitle}" with a budget of $${budget}.
-          
-          Write the actual content for this tactic.
-          - If it's an Ad, write the Headline and Ad Copy.
-          - If it's an Email, write the Subject Line and Body.
-          - If it's a Blog, write the Outline and Intro.
-          
-          Keep it professional, engaging, and ready to use. Do not use Markdown formatting.`
-        },
-        { role: "user", content: "Write the content." },
+        { role: "system", content: "You are a helpful marketing assistant." },
+        { role: "user", content: prompt }
       ],
     });
 
-    return completion.choices[0].message.content || "";
+    return response.choices[0].message.content || "No content generated.";
   } catch (e) {
-    console.error("Failed to generate content:", e);
-    return "";
+    console.error("AI Error:", e);
+    return "I had trouble connecting to the AI. Please try again.";
   }
 }

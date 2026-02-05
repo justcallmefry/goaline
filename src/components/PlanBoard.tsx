@@ -6,7 +6,7 @@ import {
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { 
-  Plus, X, Sparkles, Loader2, Download, BookOpen, ChevronLeft, Target, Search, UserCircle, Settings, LogOut, ShieldCheck, HelpCircle
+  Plus, X, Sparkles, Loader2, Download, BookOpen, ChevronLeft, Target, Search, UserCircle, Settings, LogOut, ShieldCheck, HelpCircle, FileText
 } from 'lucide-react'; 
 import { createClient } from '@supabase/supabase-js';
 import { generateMarketingPlan, generateTacticContent } from '@/app/actions';
@@ -24,7 +24,7 @@ import { SettingsModal } from '@/components/modals/SettingsModal';
 
 // --- MODALS ---
 import { TacticAddModal, TacticEditModal, DeleteModal } from '@/components/modals/TacticModals';
-import { WelcomeWizard } from '@/components/modals/WelcomeWizard';
+import { WelcomeWizard, OnboardingData } from '@/components/modals/WelcomeWizard';
 import { LaneInfoModal } from '@/components/modals/LaneInfoModal';
 import { ToolModal, AgencyModal } from '@/components/modals/PartnerModals';
 import { AIStrategistModal } from '@/components/modals/AIStrategistModal';
@@ -69,7 +69,10 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
 
   // Modal Visibility State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [showWelcomeWizard, setShowWelcomeWizard] = useState(false);
+  
+  // FOR TESTING: We set this to true by default so you can see it on localhost:3000
+  const [showWelcomeWizard, setShowWelcomeWizard] = useState(true); 
+  
   const [isTourActive, setIsTourActive] = useState(false);
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
@@ -92,7 +95,6 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
   const [tacticContent, setTacticContent] = useState(''); 
   
   // AI & Automation State
-  const [wizardInput, setWizardInput] = useState('');
   const [isWizardGenerating, setIsWizardGenerating] = useState(false);
   const [businessDesc, setBusinessDesc] = useState('');
   const [isAIGenerating, setIsAIGenerating] = useState(false); 
@@ -121,11 +123,10 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // --- DATA FETCHING (Corrected to fix missing tactics) ---
+  // --- DATA FETCHING ---
   useEffect(() => {
     if (!session?.user) return; 
     async function fetchData() {
-      // 1. Fetch Library, Tools, Agencies
       const { data: libData } = await supabase.from('tactics_library').select('*').eq('status', 'approved');
       if (libData) setLibrary(libData);
       
@@ -138,11 +139,8 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
       if (profileData) { setProfile(profileData); setIsAdmin(!!profileData.is_admin); }
 
-      // 2. FETCH REAL SECTIONS FROM DB
-      // We must fetch sections to get the correct IDs that match the items
       let { data: dbSections } = await supabase.from('plan_sections').select('*').order('order_index');
       
-      // If user has no sections (new user), create defaults
       if (!dbSections || dbSections.length === 0) {
           const defaults = [
               { title: 'Awareness', order_index: 0, user_id: session.user.id },
@@ -153,14 +151,8 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
           if (newSections) dbSections = newSections;
       }
 
-      // 3. Fetch Items
       const { data: userItems } = await supabase.from('plan_items').select('*');
       
-      if (!userItems || userItems.length === 0) {
-          setShowWelcomeWizard(true);
-      } 
-      
-      // 4. Build Lanes using REAL DB IDs
       if (dbSections && dbSections.length > 0) {
           setLanes(dbSections.map((section: any) => ({
               id: section.id,
@@ -173,7 +165,6 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
               })) || []
           })));
       } else {
-          // Fallback if something fails drastically
           setLanes(initialLanes);
       }
     }
@@ -198,22 +189,61 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
 
   const handleSignOut = async () => { await supabase.auth.signOut(); setSession(null); };
 
-  const handleWizardSubmit = async (e: React.FormEvent) => {
-      e.preventDefault(); 
-      if (!wizardInput.trim() || !session?.user) return; 
+  // --- NEW WIZARD HANDLER ---
+  const handleWizardSubmit = async (data: OnboardingData) => {
+      if (!session?.user) return; 
       setIsWizardGenerating(true);
-      logActivity(session.user.id, 'wizard_generate', { prompt: wizardInput, prompt_length: wizardInput.length }); 
-      const suggestions = await generateMarketingPlan(wizardInput);
+
+      await supabase.from('onboarding_context').insert({
+          user_id: session.user.id,
+          business_name: data.businessName,
+          industry: data.industry,
+          business_model: data.businessModel,
+          website_url: data.website,
+          target_audience: data.targetAudience,
+          value_proposition: data.valueProposition,
+          current_goal: data.mainGoal,
+          marketing_budget: data.budget,
+          time_commitment: data.timeCommitment
+      });
+
+      const megaPrompt = `
+        I need a 3-month Growth Strategy for the following business:
+        
+        Business: ${data.businessName}
+        Industry: ${data.industry}
+        Model: ${data.businessModel}
+        
+        Target Audience: ${data.targetAudience}
+        Value Proposition: ${data.valueProposition}
+        
+        Goal: ${data.mainGoal}
+        Budget Constraint: ${data.budget}
+        Time Constraint: ${data.timeCommitment}
+        
+        Please generate specific, actionable tactics for the Awareness, Conversion, and Retention stages.
+      `;
+
+      logActivity(session.user.id, 'wizard_generate', { business: data.businessName, goal: data.mainGoal }); 
+      
+      const suggestions = await generateMarketingPlan(megaPrompt);
+      
       if (suggestions?.length > 0) {
           const laneIds = lanes.map(l => l.id);
           const distributionMap = [laneIds[0], laneIds[0], laneIds[1], laneIds[2], laneIds[3]];
           const newItems = suggestions.map((s: any, index: number) => ({
               id: crypto.randomUUID(), title: s.title, budget: s.budget, content: '', section_id: distributionMap[index % distributionMap.length] || laneIds[0]
           }));
+          
           for (const item of newItems) { await supabase.from('plan_items').insert({ id: item.id, section_id: item.section_id, custom_notes: item.title, allocated_budget: item.budget, user_id: session.user.id }); }
+          
           setLanes(prev => prev.map(lane => ({ ...lane, items: [...lane.items, ...newItems.filter((i: any) => i.section_id === lane.id)] })));
-          if (wizardInput.length < 50) { await supabase.from('profiles').update({ business_name: wizardInput }).eq('id', session.user.id); setProfile((prev: any) => ({ ...prev, business_name: wizardInput })); }
+          
+          await supabase.from('profiles').update({ business_name: data.businessName }).eq('id', session.user.id); 
+          setProfile((prev: any) => ({ ...prev, business_name: data.businessName }));
+          
           setShowWelcomeWizard(false);
+          
           if (window.innerWidth > 768) setTimeout(() => { setIsTourActive(true); setTourStepIndex(0); }, 1000);
       }
       setIsWizardGenerating(false);
@@ -447,7 +477,22 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
 
         {/* TOOLBAR */}
         <div className="bg-slate-900 px-6 py-3 flex justify-between items-center shadow-md z-10">
-            <button id="tour-library-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="flex items-center gap-2 text-white transition-colors text-xs font-bold uppercase tracking-widest cursor-pointer group hover:text-indigo-400"><BookOpen size={16} className="text-indigo-400 group-hover:text-indigo-300 transition-colors" /><span>Open Library</span></button>
+            
+            {/* LEFT SIDE ACTIONS */}
+            <div className="flex items-center gap-6">
+                <button id="tour-library-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="flex items-center gap-2 text-white transition-colors text-xs font-bold uppercase tracking-widest cursor-pointer group hover:text-indigo-400">
+                    <BookOpen size={16} className="text-indigo-400 group-hover:text-indigo-300 transition-colors" />
+                    <span>Open Library</span>
+                </button>
+
+                {/* --- NEW BUTTON HERE --- */}
+                <a href="/dashboard/plans" className="flex items-center gap-2 text-white transition-colors text-xs font-bold uppercase tracking-widest cursor-pointer group hover:text-indigo-400">
+                     <FileText size={16} className="text-indigo-400 group-hover:text-indigo-300 transition-colors" />
+                     <span>My Growth Plans</span>
+                </a>
+            </div>
+
+            {/* RIGHT SIDE STATS & BUTTONS */}
             <div className="flex items-center gap-6">
                 <div className="hidden md:flex items-center gap-6 border-r border-slate-700 pr-6 mr-2">
                     <div className="flex flex-col items-end"><span className="text-[9px] font-bold text-white/90 uppercase tracking-widest">Budget</span><span className="text-sm font-black text-white font-mono">${totalBudget.toLocaleString()}</span></div>
@@ -470,7 +515,13 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
       </div>
 
       {/* --- ALL MODALS --- */}
-      <WelcomeWizard show={showWelcomeWizard} onClose={() => setShowWelcomeWizard(false)} onSubmit={handleWizardSubmit} input={wizardInput} setInput={setWizardInput} isGenerating={isWizardGenerating} />
+      <WelcomeWizard 
+          show={showWelcomeWizard} 
+          onClose={() => setShowWelcomeWizard(false)} 
+          onSubmit={handleWizardSubmit} 
+          isGenerating={isWizardGenerating} 
+      />
+      
       <TourGuide active={isTourActive} onClose={() => setIsTourActive(false)} onNext={() => { if (tourStepIndex < 6) setTourStepIndex(tourStepIndex + 1); else setIsTourActive(false); }} stepIndex={tourStepIndex} totalSteps={7} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} session={session} profile={profile} onProfileUpdate={(updates) => setProfile(updates)} />
       
@@ -482,7 +533,6 @@ export default function PlanBoard({ initialLanes }: { initialLanes: any[] }) {
       {/* Form Modals */}
       <TacticAddModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onSubmit={submitAddTactic} name={tacticName} setName={setTacticName} budget={tacticBudget} setBudget={setTacticBudget} />
       
-      {/* Updated Tactic Edit Modal with Submission Props */}
       <TacticEditModal 
         isOpen={isEditModalOpen} 
         onClose={() => setIsEditModalOpen(false)} 

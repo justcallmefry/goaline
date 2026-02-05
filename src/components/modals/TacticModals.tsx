@@ -1,131 +1,181 @@
-'use client';
-import React from 'react';
-import { X, AlertTriangle, Sparkles, Loader2, Share2, AlertCircle, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Sparkles, Trash2, Wand2, ArrowRight } from 'lucide-react';
 
+// --- ADD MODAL ---
 export function TacticAddModal({ isOpen, onClose, onSubmit, name, setName, budget, setBudget }: any) {
   if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
-        <div className="px-6 py-5 bg-slate-900 flex justify-between items-center">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest">New Tactic</h3>
-            <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors cursor-pointer"><X size={24} /></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+          <h3 className="font-bold text-slate-900">Add New Tactic</h3>
+          <button onClick={onClose}><X size={20} className="text-slate-400 hover:text-slate-600" /></button>
         </div>
-        <form onSubmit={onSubmit} className="p-8 space-y-6">
-          <input 
-            autoFocus 
-            type="text" 
-            required 
-            placeholder="Tactic Title" 
-            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-slate-900 outline-none transition-all" 
-            value={name} 
-            onChange={(e) => setName(e.target.value)} 
-          />
-          <input 
-            type="number" 
-            placeholder="Budget" 
-            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-slate-900 outline-none transition-all" 
-            value={budget} 
-            onFocus={(e) => e.target.select()} // <--- FIXED: Auto-selects 0
-            onChange={(e) => setBudget(Number(e.target.value))} 
-          />
-          <button type="submit" className="w-full py-3 bg-slate-900 text-white hover:bg-black rounded-xl font-bold text-xs uppercase tracking-widest cursor-pointer transition-all">Save Changes</button>
+        <form onSubmit={onSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tactic Name</label>
+            <input autoFocus type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-purple-500 outline-none" placeholder="e.g., Instagram Ads" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Budget Allocation</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+              <input type="number" value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="w-full pl-7 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-purple-500 outline-none" placeholder="0" />
+            </div>
+          </div>
+          <button type="submit" className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-all mt-4">Create Tactic</button>
         </form>
       </div>
     </div>
   );
 }
 
+// --- EDIT MODAL (THE BIG UPDATE) ---
 export function TacticEditModal({ 
-  isOpen, onClose, onSubmit, name, setName, budget, setBudget, 
-  content, setContent, onAutoWrite, isWriting, 
-  onSubmitLibrary, isSubmitting, submitError, submitSuccess // <--- NEW PROP
+  isOpen, onClose, onSubmit, 
+  name, setName, 
+  budget, setBudget, 
+  content, setContent, 
+  onAutoWrite, isWriting,
+  // New Props for AI Data
+  aiRationale, actionItem,
+  onDelete // New Prop for handling delete
 }: any) {
+  
+  // Local state for "Steering" the AI
+  const [instructions, setInstructions] = useState("");
+
   if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
-        <div className="px-6 py-5 bg-slate-900 flex justify-between items-center">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest">Edit Tactic</h3>
-            <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors cursor-pointer"><X size={24} /></button>
-        </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="bg-white rounded-[32px] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
         
-        {/* HTML ERROR ALERT */}
-        {submitError && (
-            <div className="bg-red-50 border-b border-red-100 px-6 py-3 flex items-center gap-3">
-                <AlertCircle size={16} className="text-red-600 flex-shrink-0" />
-                <p className="text-xs font-bold text-red-600">{submitError}</p>
-            </div>
-        )}
+        {/* Header */}
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+          <div className="flex items-center gap-3">
+             <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-purple-600">
+               <Sparkles size={20} />
+             </div>
+             <div>
+               <h3 className="font-bold text-slate-900 text-lg leading-tight">Edit Tactic</h3>
+               <p className="text-xs text-slate-400 font-medium">Refine your strategy</p>
+             </div>
+          </div>
+          <button onClick={onClose}><X size={24} className="text-slate-400 hover:text-slate-600" /></button>
+        </div>
 
-        {/* HTML SUCCESS ALERT */}
-        {submitSuccess && (
-            <div className="bg-emerald-50 border-b border-emerald-100 px-6 py-3 flex items-center gap-3">
-                <CheckCircle size={16} className="text-emerald-600 flex-shrink-0" />
-                <p className="text-xs font-bold text-emerald-600">{submitSuccess}</p>
-            </div>
-        )}
+        {/* Scrollable Body */}
+        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+          
+          {/* 1. AI STRATEGY CONTEXT (Only shows if AI created it) */}
+          {(aiRationale || actionItem) && (
+            <div className="bg-purple-50 p-5 rounded-2xl border border-purple-100">
+              <div className="flex items-center gap-2 text-purple-700 text-xs font-black uppercase tracking-widest mb-3">
+                 <Sparkles size={12} /> AI Strategy Insight
+              </div>
+              
+              {aiRationale && (
+                <p className="text-sm text-purple-900 leading-relaxed font-medium mb-4">
+                  {aiRationale}
+                </p>
+              )}
 
-        <form onSubmit={onSubmit} className="p-8 space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 sm:col-span-1">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Title</label>
-                <input type="text" required className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-slate-900 outline-none transition-all" value={name} onChange={(e) => setName(e.target.value)} />
+              {actionItem && (
+                <div className="bg-white/60 p-3 rounded-xl border border-purple-100 flex items-start gap-3">
+                   <div className="mt-0.5 bg-purple-200 p-1 rounded-full text-purple-700"><ArrowRight size={12} /></div>
+                   <div>
+                     <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block mb-0.5">Recommended Action</span>
+                     <span className="text-sm text-purple-900 font-bold">{actionItem}</span>
+                   </div>
+                </div>
+              )}
             </div>
-            <div className="col-span-2 sm:col-span-1">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Budget</label>
-                <input 
-                    type="number" 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-slate-900 outline-none transition-all" 
-                    value={budget} 
-                    onFocus={(e) => e.target.select()} // <--- FIXED: Auto-selects 0
-                    onChange={(e) => setBudget(Number(e.target.value))} 
-                />
+          )}
+
+          {/* 2. Core Fields */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Tactic Name</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-purple-500 outline-none transition-all" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Budget</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                <input type="number" value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="w-full pl-7 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-purple-500 outline-none transition-all" />
+              </div>
             </div>
           </div>
-          
-          <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">Content</label>
-                <button type="button" onClick={onAutoWrite} disabled={isWriting} className="text-[10px] bg-slate-100 text-slate-700 px-4 py-2 rounded-full font-bold uppercase hover:bg-slate-200 flex items-center justify-center gap-2 cursor-pointer transition-colors">
-                {isWriting ? <Loader2 className="animate-spin" size={12}/> : <Sparkles size={12} />} {isWriting ? 'WRITING...' : 'AUTO-WRITE'}
-                </button>
+
+          {/* 3. "Steerable" Auto-Write Section */}
+          <div className="space-y-3">
+            <div className="flex justify-between items-end">
+              <label className="block text-xs font-bold text-slate-500 uppercase">Execution Plan / Content</label>
+              
+              {/* Steerable Inputs */}
+              <div className="flex items-center gap-2 w-full max-w-sm ml-auto">
+                 <input 
+                    type="text" 
+                    placeholder="E.g., 'Focus on B2B' or 'Make it funny'" 
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-purple-500 outline-none"
+                 />
+                 <button 
+                    type="button" 
+                    onClick={() => onAutoWrite(instructions)} // Pass instructions to handler
+                    disabled={isWriting}
+                    className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-all disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {isWriting ? <span className="animate-pulse">Thinking...</span> : <><Wand2 size={12} /> Auto-Write</>}
+                 </button>
+              </div>
             </div>
-            <textarea className="w-full h-40 bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm leading-relaxed focus:ring-2 focus:ring-slate-900 outline-none transition-all resize-none" value={content} onChange={(e) => setContent(e.target.value)} />
+            
+            <textarea 
+              value={content} 
+              onChange={(e) => setContent(e.target.value)} 
+              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm leading-relaxed h-40 focus:ring-2 focus:ring-purple-500 outline-none resize-none transition-all font-medium text-slate-700" 
+              placeholder="Describe the tactics, steps, or copy..."
+            />
           </div>
-          
-          <div className="flex gap-3 pt-2">
-             <button 
-                type="button" 
-                onClick={onSubmitLibrary} 
-                disabled={isSubmitting || !!submitSuccess} // Disable if submitting OR if success message is showing
-                className={`flex-1 py-3 border rounded-xl font-bold text-xs uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-2 ${submitSuccess ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-white border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-200'}`}
-             >
-                {isSubmitting ? <Loader2 className="animate-spin" size={16}/> : submitSuccess ? <CheckCircle size={16} /> : <Share2 size={16} />}
-                <span>{submitSuccess ? 'Sent!' : 'Submit as Template'}</span>
-             </button>
-             
-             <button type="submit" className="flex-[2] py-3 bg-slate-900 text-white hover:bg-black rounded-xl font-bold text-xs uppercase tracking-widest cursor-pointer transition-all">Save Changes</button>
+
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
+          <button 
+            type="button" 
+            onClick={onDelete} 
+            className="text-slate-400 hover:text-red-500 text-sm font-bold flex items-center gap-2 transition-colors"
+          >
+            <Trash2 size={16} /> Delete
+          </button>
+          <div className="flex gap-3">
+            <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-slate-500 font-bold text-sm hover:bg-slate-200 transition-colors">Cancel</button>
+            <button onClick={onSubmit} className="px-8 py-2.5 rounded-xl bg-purple-600 text-white font-bold text-sm hover:bg-purple-700 shadow-lg shadow-purple-200 transition-all active:scale-95">Save Changes</button>
           </div>
-        </form>
+        </div>
+
       </div>
     </div>
   );
 }
 
+// --- DELETE MODAL ---
 export function DeleteModal({ isOpen, onClose, onConfirm }: any) {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-200">
-        <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="text-red-500" size={24} />
-        </div>
-        <h3 className="text-lg font-black mb-2 text-slate-900">Delete Tactic?</h3>
-        <p className="text-sm text-slate-500 mb-6">This action cannot be undone.</p>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-8 text-center animate-in zoom-in-95">
+        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500"><Trash2 size={32} /></div>
+        <h3 className="text-xl font-bold text-slate-900 mb-2">Delete Tactic?</h3>
+        <p className="text-slate-500 text-sm mb-8">This action cannot be undone. Are you sure you want to remove this item?</p>
         <div className="flex gap-3">
-            <button onClick={onClose} className="flex-1 py-3 border rounded-lg font-bold text-xs hover:bg-slate-50 cursor-pointer transition-colors">Cancel</button>
-            <button onClick={onConfirm} className="flex-1 py-3 bg-red-600 text-white rounded-lg font-bold text-xs hover:bg-red-700 cursor-pointer transition-colors">Delete</button>
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-colors">Cancel</button>
+          <button onClick={onConfirm} className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-200">Delete</button>
         </div>
       </div>
     </div>
