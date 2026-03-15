@@ -21,7 +21,15 @@ export function TacticAddModal({ isOpen, onClose, onSubmit, name, setName, budge
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Budget Allocation</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-              <input type="number" value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="w-full pl-7 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-purple-500 outline-none" placeholder="0" />
+              <input
+                type="number"
+                value={budget}
+                onChange={(e) => setBudget(Number(e.target.value) || 0)}
+                onFocus={(e) => e.target.select()}
+                className="w-full pl-7 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-purple-500 outline-none"
+                placeholder="0"
+                min={0}
+              />
             </div>
           </div>
           <button type="submit" className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-all mt-4">Create Tactic</button>
@@ -104,7 +112,14 @@ export function TacticEditModal({
               <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Budget</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-                <input type="number" value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="w-full pl-7 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-purple-500 outline-none transition-all" />
+                <input
+                  type="number"
+                  value={budget}
+                  onChange={(e) => setBudget(Number(e.target.value) || 0)}
+                  onFocus={(e) => e.target.select()}
+                  className="w-full pl-7 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+                  min={0}
+                />
               </div>
             </div>
           </div>

@@ -56,3 +56,28 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* —— Growth Report: print as 10–20 page PDF —— */
+@media print {
+  .report-no-print {
+    display: none !important;
+  }
+  .report-page-break {
+    page-break-after: always;
+  }
+  .report-page-break-before {
+    page-break-before: always;
+  }
+  body {
+    background: #fff;
+  }
+  .report-print-only {
+    display: block !important;
+  }
+  .report-container {
+    background: #fff !important;
+  }
+}
+.report-print-only {
+  display: none;
+}

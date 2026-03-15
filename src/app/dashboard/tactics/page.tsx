@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   DndContext, DragEndEvent, DragStartEvent, DragOverEvent, DragOverlay, useSensor, useSensors, 
-  PointerSensor, TouchSensor, closestCorners, defaultDropAnimationSideEffects
+  PointerSensor, TouchSensor, pointerWithin, rectIntersection, defaultDropAnimationSideEffects, useDroppable
 } from '@dnd-kit/core';
+import type { CollisionDetection } from '@dnd-kit/core';
 import { 
   arrayMove, SortableContext, verticalListSortingStrategy, useSortable 
 } from '@dnd-kit/sortable';
@@ -59,12 +60,33 @@ const supabase = createClient(
 );
 
 // --- INITIAL DATA ---
+const LANE_IDS = ['awareness', 'conversion', 'retention'];
+
 const INITIAL_LIBRARY: LibraryItem[] = [
   { id: 'lib1', title: 'Viral TikTok Challenge', category: 'Awareness', default_budget: 1500, description: 'Launch a hashtag challenge to engage Gen Z users.', tools: ['TikTok', 'CapCut'], experts: ['ViralNation'] },
   { id: 'lib2', title: 'SEO Content Sprint', category: 'Awareness', default_budget: 2000, description: 'Create 20 high-quality blog posts targeting long-tail keywords.', tools: ['SEMrush', 'Jasper'], experts: ['Neil Patel Digital'] },
   { id: 'lib3', title: 'Email Drip Campaign', category: 'Conversion', default_budget: 500, description: 'Set up a 7-day automated email sequence for new leads.', tools: ['Mailchimp', 'HubSpot'], experts: ['Retention.com'] },
   { id: 'lib4', title: 'Loyalty Rewards Program', category: 'Retention', default_budget: 300, description: 'Implement a points-based system to encourage repeat purchases.', tools: ['Smile.io'], experts: [] },
 ];
+
+/** Library: rectIntersection + prefer lanes. Tactics: pointerWithin + prefer cards (so reorder works). */
+const collisionDetection: CollisionDetection = (args) => {
+  const isLibrary = args.active.data.current?.type === 'library';
+  const collisions = isLibrary ? rectIntersection(args) : pointerWithin(args);
+  // Library drag: prefer lane droppables (column). Tactic drag: prefer tactic cards (so "over" is a card for reorder).
+  return [...collisions].sort((a, b) => {
+    const aIsLane = LANE_IDS.includes(String(a.id));
+    const bIsLane = LANE_IDS.includes(String(b.id));
+    if (isLibrary) {
+      if (aIsLane && !bIsLane) return -1;
+      if (!aIsLane && bIsLane) return 1;
+    } else {
+      if (!aIsLane && bIsLane) return -1;
+      if (aIsLane && !bIsLane) return 1;
+    }
+    return 0;
+  });
+};
 
 export default function TacticsPage() {
   const [mounted, setMounted] = useState(false);
@@ -115,6 +137,10 @@ export default function TacticsPage() {
   const [isAIGenerating, setIsAIGenerating] = useState(false);
   const [isWriting, setIsWriting] = useState(false);
 
+  // Tools & agencies for recommended vendors/experts (matched by tactic title)
+  const [tools, setTools] = useState<{ id: string; name: string; tags?: string[] }[]>([]);
+  const [agencies, setAgencies] = useState<{ id: string; name: string; tags?: string[] }[]>([]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor)
@@ -131,6 +157,16 @@ export default function TacticsPage() {
       { id: 'retention', title: 'RETENTION', items: [] }
     ]);
   }, []);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    (async () => {
+      const { data: toolData } = await supabase.from('tools').select('id, name, tags').eq('status', 'approved');
+      if (toolData) setTools(toolData as { id: string; name: string; tags?: string[] }[]);
+      const { data: agencyData } = await supabase.from('agencies').select('id, name, tags').eq('status', 'approved');
+      if (agencyData) setAgencies(agencyData as { id: string; name: string; tags?: string[] }[]);
+    })();
+  }, [session]);
 
   const filteredLibrary = useMemo(() => 
     libraryItems.filter(i => i.title.toLowerCase().includes(librarySearch.toLowerCase())), 
@@ -274,49 +310,65 @@ export default function TacticsPage() {
   }
 
   async function handleAIGenerate(e: React.FormEvent) {
-    e.preventDefault(); 
-    if (!businessDesc.trim()) return; 
+    e.preventDefault();
+    if (!businessDesc.trim()) return;
     setIsAIGenerating(true);
-    
-    const suggestions = await generateMarketingPlan(businessDesc); // Real server action
-    
-    if (suggestions && suggestions.length > 0) {
-      // Map the AI response to our local Tactic structure
-      const newItems = suggestions.map((s: any) => ({
-        id: crypto.randomUUID(),
-        title: s.title,
-        budget: s.budget || 0,
-        section_id: s.section || 'awareness', // Use AI suggested section or default
-        status: (s.budget > 0) ? 'READY' : 'DRAFT',
-        tools: [],
-        experts: [],
-        ai_rationale: s.rationale,
-        action_item: s.action
-      }));
 
-      // Distribute to lanes based on section_id
-      setLanes(prev => {
-        const newLanes = prev.map(l => ({...l, items: [...l.items]})); // Deep copy to be safe
-        newItems.forEach((item: Tactic) => {
-          const laneIndex = newLanes.findIndex(l => l.id.toLowerCase() === item.section_id.toLowerCase());
-          if (laneIndex >= 0) {
-            newLanes[laneIndex].items.push(item);
-          } else {
-            newLanes[0].items.push(item); // Fallback
-          }
+    try {
+      const suggestions = await generateMarketingPlan(businessDesc);
+
+      if (suggestions && suggestions.length > 0) {
+        const sectionToLane = (s: string) => {
+          const v = (s || 'awareness').toString().toLowerCase().replace(/\s+/g, '');
+          if (v === 'consideration' || v === 'conversion') return 'conversion';
+          if (v === 'retention') return 'retention';
+          return 'awareness';
+        };
+
+        const newItems = suggestions.map((s: any) => ({
+          id: crypto.randomUUID(),
+          title: s.title,
+          budget: s.budget || 0,
+          section_id: sectionToLane(s.section),
+          status: (s.budget > 0) ? 'READY' : 'DRAFT',
+          tools: Array.isArray(s.tools) ? s.tools : (s.tools ? [s.tools] : []),
+          experts: Array.isArray(s.experts) ? s.experts : (s.experts ? [s.experts] : []),
+          ai_rationale: s.rationale,
+          action_item: s.action
+        }));
+
+        setLanes(prev => {
+          const newLanes = prev.map(l => ({ ...l, items: [...l.items] }));
+          newItems.forEach((item: Tactic) => {
+            const laneIndex = newLanes.findIndex(l => l.id === item.section_id);
+            const targetIndex = laneIndex >= 0 ? laneIndex : 0;
+            newLanes[targetIndex].items.push({ ...item, section_id: newLanes[targetIndex].id });
+          });
+          return newLanes;
         });
-        return newLanes;
-      });
 
+        setStrategySummary({
+          title: "Growth Strategy Generated",
+          summary: `I've analyzed your goal and created ${newItems.length} high-impact tactics focused on your specific business needs.`
+        });
+        setIsAIModalOpen(false);
+        setBusinessDesc('');
+      } else {
+        setStrategySummary({
+          title: "No tactics generated",
+          summary: "We couldn't generate tactics this time. Make sure OPENAI_API_KEY is set in .env.local, or try a more detailed description of your ideal customer and goal."
+        });
+        setIsAIModalOpen(false);
+        setBusinessDesc('');
+      }
+    } catch (err) {
       setStrategySummary({
-        title: "Growth Strategy Generated",
-        summary: `I've analyzed your goal and created ${newItems.length} high-impact tactics focused on your specific business needs.`
+        title: "Something went wrong",
+        summary: err instanceof Error ? err.message : "The AI strategist couldn't complete. Check your API key and try again."
       });
+    } finally {
+      setIsAIGenerating(false);
     }
-
-    setIsAIGenerating(false);
-    setIsAIModalOpen(false);
-    setBusinessDesc('');
   }
 
   // --- CRUD ---
@@ -376,7 +428,7 @@ export default function TacticsPage() {
   const totalBudget = lanes.reduce((sum, lane) => sum + lane.items.reduce((s, i) => s + Number(i.budget), 0), 0);
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
       <div className="flex h-screen overflow-hidden relative">
         
         {/* MAIN BOARD */}
@@ -398,6 +450,8 @@ export default function TacticsPage() {
             {lanes.map((lane) => (
               <SortableColumn 
                 key={lane.id} lane={lane} 
+                tools={tools}
+                agencies={agencies}
                 onAdd={() => openAddModal(lane.id)}
                 onEdit={openEditModal}
                 onDelete={(id: string) => { setTacticToDelete(id); setIsDeleteModalOpen(true); }}
@@ -481,10 +535,14 @@ function DraggableLibraryCard({ item }: { item: LibraryItem }) {
   );
 }
 
-function SortableColumn({ lane, onAdd, onEdit, onDelete }: any) {
+function SortableColumn({ lane, tools, agencies, onAdd, onEdit, onDelete }: any) {
+  const { setNodeRef, isOver } = useDroppable({ id: lane.id });
   const iconMap: any = { 'AWARENESS': <Megaphone size={18} className="text-blue-500" />, 'CONVERSION': <Zap size={18} className="text-orange-500" />, 'RETENTION': <Heart size={18} className="text-red-500" /> };
   return (
-    <div className="flex flex-col gap-4">
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col gap-4 min-h-[200px] rounded-2xl transition-colors ${isOver ? 'ring-2 ring-purple-400 ring-offset-2 bg-purple-50/50' : ''}`}
+    >
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
         <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100">{iconMap[lane.title.toUpperCase()] || <Box size={18} />}</div><span className="font-bold text-slate-900 uppercase">{lane.title}</span></div>
         <span className="bg-slate-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg">${lane.items.reduce((acc:any, i:any) => acc + Number(i.budget), 0).toLocaleString()}</span>
@@ -492,7 +550,7 @@ function SortableColumn({ lane, onAdd, onEdit, onDelete }: any) {
       <button onClick={onAdd} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-bold text-xs flex items-center justify-center gap-2 hover:border-purple-300 hover:text-purple-600 transition-all"><Plus size={16} /> ADD TACTIC</button>
       <SortableContext items={lane.items.map((i:any) => i.id)} strategy={verticalListSortingStrategy} id={lane.id}>
         <div className="flex flex-col gap-4 min-h-[100px]">
-          {lane.items.map((item: any) => <SortableTacticCard key={item.id} tactic={item} onEdit={onEdit} onDelete={onDelete} />)}
+          {lane.items.map((item: any) => <SortableTacticCard key={item.id} tactic={item} tools={tools} agencies={agencies} onEdit={onEdit} onDelete={onDelete} />)}
         </div>
       </SortableContext>
     </div>
@@ -505,8 +563,29 @@ function SortableTacticCard(props: any) {
   return <div ref={setNodeRef} style={style} {...attributes} {...listeners}><TacticCard {...props} /></div>;
 }
 
-function TacticCard({ tactic, isOverlay, onEdit, onDelete }: any) {
+function tagsFor(t: { tags?: string[] | string }): string[] {
+  if (!t.tags) return [];
+  if (Array.isArray(t.tags)) return t.tags.map(s => String(s).trim());
+  if (typeof t.tags === 'string') return t.tags.split(',').map(s => s.trim()).filter(Boolean);
+  return [];
+}
+
+function getMatchingTools(tools: { id: string; name: string; tags?: string[] }[], tacticTitle: string) {
+  if (!tools?.length || !tacticTitle) return [];
+  const lower = tacticTitle.toLowerCase();
+  return tools.filter(tool => tagsFor(tool).some(tag => lower.includes(tag.toLowerCase()))).slice(0, 5);
+}
+
+function getMatchingAgencies(agencies: { id: string; name: string; tags?: string[] }[], tacticTitle: string) {
+  if (!agencies?.length || !tacticTitle) return [];
+  const lower = tacticTitle.toLowerCase();
+  return agencies.filter(agency => tagsFor(agency).some(tag => lower.includes(tag.toLowerCase()))).slice(0, 3);
+}
+
+function TacticCard({ tactic, isOverlay, onEdit, onDelete, tools = [], agencies = [] }: any) {
   const isReady = tactic.budget > 0;
+  const matchingTools = getMatchingTools(tools, tactic.title);
+  const matchingAgencies = getMatchingAgencies(agencies, tactic.title);
   return (
     <div 
       onClick={() => !isOverlay && onEdit && onEdit(tactic)} 
@@ -542,10 +621,26 @@ function TacticCard({ tactic, isOverlay, onEdit, onDelete }: any) {
            </div>
         )}
 
-        {(tactic.tools?.length > 0 || tactic.experts?.length > 0) && (
+        {(tactic.tools?.length > 0 || tactic.experts?.length > 0 || matchingTools.length > 0 || matchingAgencies.length > 0) && (
           <div className="space-y-3 pt-3 border-t border-slate-50 mt-2">
-            {tactic.tools?.length > 0 && <div><div className="text-[9px] font-bold text-slate-400 uppercase mb-1.5 tracking-wider">Tools</div><div className="flex flex-wrap gap-2">{tactic.tools.map((t: string, i: number) => <span key={i} className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[10px] font-bold flex items-center gap-1"><Box size={10} /> {t}</span>)}</div></div>}
-            {tactic.experts?.length > 0 && <div><div className="text-[9px] font-bold text-slate-400 uppercase mb-1.5 tracking-wider">Verified Experts</div><div className="flex flex-wrap gap-2">{tactic.experts.map((e: string, i: number) => <span key={i} className="px-2 py-1 bg-green-50 text-green-700 rounded-md text-[10px] font-bold flex items-center gap-1"><CheckCircle2 size={10} /> {e}</span>)}</div></div>}
+            {(tactic.tools?.length > 0 || matchingTools.length > 0) && (
+              <div>
+                <div className="text-[9px] font-bold text-slate-400 uppercase mb-1.5 tracking-wider">Recommended Tools</div>
+                <div className="flex flex-wrap gap-2">
+                  {(tactic.tools || []).map((t: string, i: number) => <span key={`s-${i}`} className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[10px] font-bold flex items-center gap-1"><Box size={10} /> {t}</span>)}
+                  {matchingTools.map((t: { id: string; name: string }) => <span key={t.id} className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[10px] font-bold flex items-center gap-1"><Box size={10} /> {t.name}</span>)}
+                </div>
+              </div>
+            )}
+            {(tactic.experts?.length > 0 || matchingAgencies.length > 0) && (
+              <div>
+                <div className="text-[9px] font-bold text-slate-400 uppercase mb-1.5 tracking-wider">Verified Experts</div>
+                <div className="flex flex-wrap gap-2">
+                  {(tactic.experts || []).map((e: string, i: number) => <span key={`e-${i}`} className="px-2 py-1 bg-green-50 text-green-700 rounded-md text-[10px] font-bold flex items-center gap-1"><CheckCircle2 size={10} /> {e}</span>)}
+                  {matchingAgencies.map((a: { id: string; name: string }) => <span key={a.id} className="px-2 py-1 bg-green-50 text-green-700 rounded-md text-[10px] font-bold flex items-center gap-1"><CheckCircle2 size={10} /> {a.name}</span>)}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

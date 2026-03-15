@@ -14,9 +14,19 @@ export async function generateMarketingPlan(prompt: string) {
     const response = await openai.chat.completions.create({
       model: "gpt-4-turbo",
       messages: [
-        { 
-          role: "system", 
-          content: "You are an expert Chief Marketing Officer. Generate 3-5 high-impact growth tactics based on the user's business description. Return a valid JSON array of objects with keys: 'title', 'budget' (number), 'section' (one of: 'awareness', 'conversion', 'retention'), 'rationale', and 'action'." 
+        {
+          role: "system",
+          content: `You are an expert Chief Marketing Officer. Generate 3-5 high-impact growth tactics based on the user's business description.
+Return a valid JSON object with a "tactics" array. Each tactic must have:
+- title (string)
+- budget (number, in dollars)
+- section (exactly one of: "awareness", "conversion", "retention")
+- rationale (short sentence why this tactic)
+- action (one concrete next step)
+Optionally include per tactic:
+- tools (array of 0-3 tool/vendor names, e.g. ["Meta Ads", "Canva"])
+- experts (array of 0-2 agency/expert names, e.g. ["Disruptive Advertising"])
+Example: { "tactics": [ { "title": "Instagram Ads", "budget": 500, "section": "awareness", "rationale": "...", "action": "...", "tools": ["Meta Business Suite"], "experts": [] } ] }`
         },
         { role: "user", content: prompt }
       ],
