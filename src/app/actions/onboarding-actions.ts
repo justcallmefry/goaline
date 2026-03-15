@@ -65,8 +65,8 @@ export async function saveOnboardingData(data: OnboardingData) {
     return { error: "Failed to assign team owner" };
   }
 
-  // 5. Save the Plan
-  const { error: planError } = await supabaseAdmin
+  // 5. Save the Plan (include plan_type + roadmap_data for current schema)
+  const { data: plan, error: planError } = await supabaseAdmin
     .from('plans')
     .insert({
       user_id: user.id,
@@ -78,14 +78,18 @@ export async function saveOnboardingData(data: OnboardingData) {
       value_proposition: data.valueProposition,
       main_goal: data.mainGoal,
       budget: data.budget,
-      time_commitment: data.timeCommitment
-    });
+      time_commitment: data.timeCommitment,
+      plan_type: 'legacy',
+      roadmap_data: {},
+    })
+    .select('id')
+    .single();
 
   if (planError) {
     console.error("Plan Save Failed:", planError);
-    return { error: "Failed to save plan" };
+    return { error: "Failed to save plan. " + (planError.message || "") };
   }
 
-  // 6. Redirect to Plans Page
-  redirect('/dashboard/plans');
+  // 6. Redirect to plan detail (or list)
+  redirect(plan?.id ? `/dashboard/plans/${plan.id}` : '/dashboard/plans');
 }

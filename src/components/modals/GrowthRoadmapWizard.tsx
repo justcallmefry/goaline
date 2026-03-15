@@ -161,10 +161,10 @@ export function GrowthRoadmapWizard({
       }
       if (result?.planId) {
         onSuccess?.()
-        router.push(`/dashboard/plans/${result.planId}`)
+        window.location.href = `/dashboard/plans/${result.planId}`
         return
       }
-      setError('Something went wrong. Please try again.')
+      setError(result?.error || 'Something went wrong. Please try again.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
     } finally {
@@ -250,12 +250,12 @@ export function GrowthRoadmapWizard({
         <Progress />
 
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          {error && (
+            <div className="shrink-0 mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
+              {error}
+            </div>
+          )}
           <div className="p-6 overflow-y-auto space-y-6">
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
-                {error}
-              </div>
-            )}
 
             {showSignInGate ? (
               <div className="space-y-6 animate-in slide-in-from-right-4 duration-200 text-center py-6">

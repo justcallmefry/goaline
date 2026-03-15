@@ -12,18 +12,34 @@ export default async function PlansPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/');
 
-  // 3. Fetch the Latest Plan
   const { data: plans } = await supabase
     .from('plans')
     .select('*')
     .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
-    .limit(1);
+    .order('created_at', { ascending: false });
 
   const plan = plans?.[0];
+  const hasPlans = Array.isArray(plans) && plans.length > 0;
 
-  // If no plan exists, redirect back to wizard (safety check)
-  if (!plan) redirect('/');
+  if (!hasPlans) {
+    return (
+      <div className="space-y-8 pb-20">
+        <div className="border-b border-slate-200 pb-6">
+          <h1 className="text-2xl font-black text-slate-900 mb-1">Your Strategic Plan</h1>
+          <p className="text-slate-500 font-medium">You don&apos;t have a plan yet. Create one to get your growth roadmap and report.</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+          <p className="text-slate-600 mb-6">Answer a few questions about your business and we&apos;ll build a custom plan with next steps and a full report.</p>
+          <a
+            href="/plan"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-colors"
+          >
+            Create your first plan
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-20">

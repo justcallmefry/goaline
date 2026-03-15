@@ -48,12 +48,16 @@ import {
   getSprintTasks,
   getBudgetAllocation,
   getRisks,
+  getExecutiveSummaryBlurb,
+  getFunnelData,
+  getAssumptionsList,
   BUSINESS_TYPE_LABELS,
   URGENCY_LABELS,
 } from '@/lib/growth-roadmap-calc'
 
 const NAV = [
   { id: 'toc', label: 'Table of Contents', icon: FileText },
+  { id: 'executive-summary', label: 'Executive Summary', icon: FileText },
   { id: 'money-map', label: 'Executive Money Map', icon: LayoutDashboard },
   { id: 'moat', label: 'The Moat', icon: Shield },
   { id: 'engine', label: 'The Engine', icon: Zap },
@@ -111,6 +115,9 @@ export default function BentoGrowthReport({
   const sprints = useMemo(() => getSprintTasks(onboarding), [onboarding])
   const budgetSlices = useMemo(() => getBudgetAllocation(onboarding), [onboarding])
   const risks = useMemo(() => getRisks(onboarding), [onboarding])
+  const executiveBlurb = useMemo(() => getExecutiveSummaryBlurb(onboarding), [onboarding])
+  const funnelData = useMemo(() => getFunnelData(onboarding), [onboarding])
+  const assumptionsList = useMemo(() => getAssumptionsList(onboarding), [onboarding])
 
   const reportDate = typeof document !== 'undefined'
     ? new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
@@ -217,21 +224,31 @@ export default function BentoGrowthReport({
               </h2>
               <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
                 <ul className="space-y-3 text-slate-700">
-                  <li><a href="#money-map" className="font-medium text-purple-600 hover:underline">1. Executive Money Map</a> — Your target, trajectory & strategy at a glance</li>
-                  <li><a href="#moat" className="font-medium text-purple-600 hover:underline">2. The Moat</a> — Who you serve & why you win</li>
-                  <li><a href="#engine" className="font-medium text-purple-600 hover:underline">3. The Engine</a> — Channels, tactics & priorities</li>
-                  <li><a href="#sprints" className="font-medium text-purple-600 hover:underline">4. 90-Day Sprints</a> — Phased action plan</li>
-                  <li><a href="#budget-risks" className="font-medium text-purple-600 hover:underline">5. Budget & Resources</a> — Allocation, risks & DIY vs hire</li>
-                  <li><a href="#next-steps" className="font-medium text-purple-600 hover:underline">6. Your Next Steps</a> — What to do this week & first actions</li>
+                  <li><a href="#executive-summary" className="font-medium text-purple-600 hover:underline">1. Executive Summary</a> — Overview and context for this plan</li>
+                  <li><a href="#money-map" className="font-medium text-purple-600 hover:underline">2. Executive Money Map</a> — Your target, trajectory & strategy at a glance</li>
+                  <li><a href="#moat" className="font-medium text-purple-600 hover:underline">3. The Moat</a> — Who you serve & why you win</li>
+                  <li><a href="#engine" className="font-medium text-purple-600 hover:underline">4. The Engine</a> — Channels, tactics & priorities</li>
+                  <li><a href="#sprints" className="font-medium text-purple-600 hover:underline">5. 90-Day Sprints</a> — Phased action plan</li>
+                  <li><a href="#budget-risks" className="font-medium text-purple-600 hover:underline">6. Budget & Resources</a> — Allocation, risks & DIY vs hire</li>
+                  <li><a href="#next-steps" className="font-medium text-purple-600 hover:underline">7. Your Next Steps</a> — What to do this week & first actions</li>
                 </ul>
               </div>
             </section>
 
-            {/* View 1 — Executive Money Map */}
+            {/* Executive Summary — dynamic narrative */}
+            <section id="executive-summary" className="report-page-break scroll-mt-24">
+              <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 1</p>
+              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-6">Executive Summary</h2>
+              <Card className="mb-6 border-l-4 border-l-purple-500">
+                <p className="text-slate-700 leading-relaxed">{executiveBlurb}</p>
+              </Card>
+            </section>
+
+            {/* View 2 — Executive Money Map */}
             <section id="money-map" className="report-page-break scroll-mt-24">
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-8">
                 <div>
-                  <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 1</p>
+                  <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 2</p>
                   <h1 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight mb-2">{reportTitle}</h1>
                   <p className="text-slate-500 font-medium text-base">
                     Built for a {businessTypeLabel} serving {geographyLabel}
@@ -243,7 +260,7 @@ export default function BentoGrowthReport({
               </div>
 
               {/* KPI tiles */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <Card>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">90-Day Target</p>
                   <p className="text-2xl font-bold text-slate-900">{moneyMap.targetDisplay}</p>
@@ -269,6 +286,13 @@ export default function BentoGrowthReport({
                   <p className="text-slate-500 text-xs mt-1">Inputs: {moneyMap.confidenceInputsProvided}/{moneyMap.confidenceInputsTotal}</p>
                 </Card>
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+                <Card>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Est. Cost per Lead</p>
+                  <p className="text-xl font-bold text-slate-900">{moneyMap.cplRange}</p>
+                  <p className="text-slate-500 text-xs mt-1">From budget ÷ leads needed (guide only)</p>
+                </Card>
+              </div>
 
               {/* Trajectory chart */}
               <Card title="Current vs Plan Trajectory" className="mb-6">
@@ -288,6 +312,19 @@ export default function BentoGrowthReport({
                       <Line type="monotone" dataKey="plan" name="Plan trajectory" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} />
                     </LineChart>
                   </ResponsiveContainer>
+                </div>
+              </Card>
+
+              {/* Funnel: leads → customers → target */}
+              <Card title="The Funnel (What You Need to Hit Your Goal)" className="mb-6">
+                <p className="text-slate-500 text-sm mb-4">To reach your 90-day target, aim for these numbers each month.</p>
+                <div className="flex flex-col sm:flex-row gap-4 items-stretch">
+                  {funnelData.map((f, i) => (
+                    <div key={f.stage} className="flex-1 min-w-0 rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-center">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{f.stage}</p>
+                      <p className="text-2xl font-bold text-slate-900">{f.label}</p>
+                    </div>
+                  ))}
                 </div>
               </Card>
 
@@ -317,7 +354,7 @@ export default function BentoGrowthReport({
               {/* Quick wins */}
               <Card title="Quick Wins (Do This Week)">
                 <ul className="space-y-3">
-                  {quickWins.map((win, i) => (
+                  {(quickWins.length ? quickWins : ['Define your one primary KPI and where you’ll check it weekly']).map((win, i) => (
                     <li key={i} className="flex items-start gap-3 text-slate-700">
                       <span className="w-6 h-6 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-xs font-bold shrink-0">{i + 1}</span>
                       {win}
@@ -327,18 +364,20 @@ export default function BentoGrowthReport({
               </Card>
             </section>
 
-            {/* View 2 — The Moat */}
+            {/* View 3 — The Moat */}
             <section id="moat" className="report-page-break scroll-mt-24">
-              <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 2</p>
+              <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 3</p>
               <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-6 flex items-center gap-2">
                 <Shield size={24} className="text-purple-500" /> The Moat
               </h2>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <Card title="Best-Fit Customer">
-                  <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">{onboarding.idealCustomerText || 'Your ideal customer (from your answers).'}</p>
+                  <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
+                    {onboarding.idealCustomerText?.trim() || onboarding.offerDescription?.trim() || 'Your ideal customer and offer (from your answers). Refine this in your messaging.'}
+                  </p>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {onboarding.superpower.slice(0, 3).map((s) => (
+                    {(onboarding.superpower?.length ? onboarding.superpower.slice(0, 3) : ['Differentiation']).map((s) => (
                       <Chip key={s}>{s}</Chip>
                     ))}
                   </div>
@@ -346,10 +385,10 @@ export default function BentoGrowthReport({
                 <Card title="Why You Win">
                   <p className="text-slate-600 text-sm mb-3">You win on:</p>
                   <ul className="space-y-2">
-                    {onboarding.superpower.slice(0, 3).map((s, i) => (
+                    {(onboarding.superpower?.length ? onboarding.superpower.slice(0, 3) : ['Your offer and follow-through']).map((s, i) => (
                       <li key={i} className="flex items-center gap-2 text-slate-700">
                         <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                        {s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ')}
                       </li>
                     ))}
                   </ul>
@@ -361,9 +400,9 @@ export default function BentoGrowthReport({
 
               <Card title="Message Pillars" className="mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {onboarding.superpower.slice(0, 3).map((s, i) => (
+                  {(onboarding.superpower?.length ? onboarding.superpower.slice(0, 3) : [onboarding.offerDescription?.trim().slice(0, 40) || 'Your offer']).map((s, i) => (
                     <div key={i} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                      <p className="font-bold text-slate-900 capitalize mb-1">{s}</p>
+                      <p className="font-bold text-slate-900 mb-1">{(s.length > 40 ? s.slice(0, 40) + '…' : s).replace(/_/g, ' ')}</p>
                       <p className="text-slate-600 text-sm">Use in headlines, CTAs, and social proof.</p>
                     </div>
                   ))}
@@ -384,9 +423,9 @@ export default function BentoGrowthReport({
               </Card>
             </section>
 
-            {/* View 3 — The Engine */}
+            {/* View 4 — The Engine */}
             <section id="engine" className="report-page-break scroll-mt-24">
-              <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 3</p>
+              <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 4</p>
               <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-6 flex items-center gap-2">
                 <Zap size={24} className="text-purple-500" /> The Engine
               </h2>
@@ -457,9 +496,9 @@ export default function BentoGrowthReport({
               </Card>
             </section>
 
-            {/* View 4 — 90-Day Sprints */}
+            {/* View 5 — 90-Day Sprints */}
             <section id="sprints" className="report-page-break scroll-mt-24">
-              <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 4</p>
+              <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 5</p>
               <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-6 flex items-center gap-2">
                 <Calendar size={24} className="text-purple-500" /> 90-Day Sprints
               </h2>
@@ -510,9 +549,9 @@ export default function BentoGrowthReport({
               </div>
             </section>
 
-            {/* View 5 — Budget, KPIs, Resources & Risks */}
+            {/* View 6 — Budget, KPIs, Resources & Risks */}
             <section id="budget-risks" className="report-page-break scroll-mt-24">
-              <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 5</p>
+              <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 6</p>
               <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-6 flex items-center gap-2">
                 <DollarSign size={24} className="text-purple-500" /> Budget, Measurement & Risks
               </h2>
@@ -550,12 +589,11 @@ export default function BentoGrowthReport({
 
                 <Card title="Assumptions (editable later)">
                   <ul className="space-y-2 text-sm text-slate-600">
-                    <li>Avg revenue/customer: band from questionnaire</li>
-                    <li>Demand baseline: {onboarding.demandLevel}</li>
-                    <li>Conversion confidence: {onboarding.conversionConfidence}</li>
-                    <li>Time & budget: {onboarding.weeklyTime}, {onboarding.monthlyBudget}</li>
+                    {assumptionsList.map((a, i) => (
+                      <li key={i}><strong>{a.label}</strong>: {a.value}</li>
+                    ))}
                   </ul>
-                  <p className="text-slate-500 text-xs mt-3">Edit inputs above to refine these.</p>
+                  <p className="text-slate-500 text-xs mt-3">Edit your plan inputs to refine these.</p>
                 </Card>
               </div>
 
@@ -590,7 +628,7 @@ export default function BentoGrowthReport({
 
             {/* Your Next Steps — CTA section */}
             <section id="next-steps" className="scroll-mt-24">
-              <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 6</p>
+              <p className="text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">Section 7</p>
               <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-6 flex items-center gap-2">
                 <CheckCircle2 size={24} className="text-green-500" /> Your Next Steps
               </h2>
@@ -602,7 +640,7 @@ export default function BentoGrowthReport({
                 <Card className="border-2 border-green-200 bg-green-50/30" title="Do This Week">
                   <p className="text-slate-600 text-sm mb-4">Pick at least one. Complete all three if you can.</p>
                   <ul className="space-y-4">
-                    {quickWins.map((win, i) => (
+                    {(quickWins.length ? quickWins : ['Define your one primary KPI and where you’ll check it weekly']).map((win, i) => (
                       <li key={i} className="flex items-start gap-3">
                         <span className="w-7 h-7 rounded-full bg-green-500 text-white flex items-center justify-center text-sm font-bold shrink-0">✓</span>
                         <span className="text-slate-800 font-medium">{win}</span>

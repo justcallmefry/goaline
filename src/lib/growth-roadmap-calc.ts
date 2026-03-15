@@ -49,6 +49,8 @@ export interface MoneyMapComputed {
   customersNeededHigh: number
   leadsNeededLow: number
   leadsNeededHigh: number
+  /** e.g. "$25–$80" cost per lead given budget and leads needed */
+  cplRange: string
   confidence: ConfidenceLevel
   confidenceInputsProvided: number
   confidenceInputsTotal: number
@@ -89,6 +91,14 @@ export function computeMoneyMap(o: GoaLineOnboarding): MoneyMapComputed {
   const leadsNeededLow = Math.ceil(customersNeededHigh / conv.high)
   const leadsNeededHigh = Math.ceil(customersNeededLow / conv.low)
 
+  const leadsPerMonth = (leadsNeededLow + leadsNeededHigh) / 2
+  const budgetLow = o.monthlyBudget === '0' ? 0 : o.monthlyBudget === 'lt_500' ? 250 : o.monthlyBudget === '500_1500' ? 1000 : o.monthlyBudget === '1500_5000' ? 3250 : 5000
+  const budgetHigh = o.monthlyBudget === '0' ? 0 : o.monthlyBudget === 'lt_500' ? 500 : o.monthlyBudget === '500_1500' ? 1500 : o.monthlyBudget === '1500_5000' ? 5000 : 10000
+  const monthlyBudget = (budgetLow + budgetHigh) / 2
+  const cplLow = leadsPerMonth > 0 ? Math.round((monthlyBudget / 4) / leadsPerMonth) : 0
+  const cplHigh = leadsNeededLow > 0 ? Math.round((monthlyBudget / 4) / Math.max(1, leadsNeededLow * 0.5)) : cplLow * 2
+  const cplRange = o.monthlyBudget === '0' ? 'N/A (organic focus)' : `$${cplLow}–$${cplHigh}`
+
   const moneyMapFields = [
     o.target90Day?.value != null || (o.target90Day?.low != null && o.target90Day?.high != null),
     o.avgRevenuePerCustomerBand && o.avgRevenuePerCustomerBand !== 'not_sure' || !!o.priceRangeBand,
@@ -112,10 +122,79 @@ export function computeMoneyMap(o: GoaLineOnboarding): MoneyMapComputed {
     customersNeededHigh,
     leadsNeededLow,
     leadsNeededHigh,
+    cplRange,
     confidence,
     confidenceInputsProvided: provided,
     confidenceInputsTotal: total,
   }
+}
+
+// —— Executive summary: 2–3 sentence blurb (dynamic narrative) ——
+export function getExecutiveSummaryBlurb(o: GoaLineOnboarding): string {
+  const name = o.businessName || 'Your business'
+  const offer = o.offerDescription?.trim() || 'your offer'
+  const geo = o.serviceAreaText || (o.geography === 'local' ? 'your local area' : o.geography === 'regional' ? 'your region' : o.geography === 'national' ? 'nationally' : 'online')
+  const map = computeMoneyMap(o)
+  const part1 = `${name}${offer !== 'your offer' ? ` (${offer.slice(0, 80)}${offer.length > 80 ? '…' : ''})` : ''} is focused on reaching ${map.targetDisplay} in 90 days.`
+  const part2 = `This roadmap is built for a ${BUSINESS_TYPE_LABELS[o.businessType].toLowerCase()} serving ${geo}, with an estimated need of ${map.leadsNeededLow}–${map.leadsNeededHigh} leads per month to hit that target.`
+  return `${part1} ${part2}`
+}
+
+// —— Funnel data for report viz: leads/mo, customers/mo, target ——
+export function getFunnelData(o: GoaLineOnboarding): { stage: string; value: number; label: string }[] {
+  const map = computeMoneyMap(o)
+  const leadsMid = Math.ceil((map.leadsNeededLow + map.leadsNeededHigh) / 2)
+  const customersMid = Math.ceil((map.customersNeededLow + map.customersNeededHigh) / 2)
+  const targetVal = map.targetUnit === '$' ? map.targetValue : map.customersNeededHigh
+  return [
+    { stage: 'Leads/mo', value: leadsMid, label: `${leadsMid} leads` },
+    { stage: 'Customers/mo', value: customersMid, label: `~${customersMid} customers` },
+    { stage: '90-day goal', value: targetVal, label: map.targetDisplay },
+  ]
+}
+
+// —— Human-readable assumptions for report ——
+const WEEKLY_LABELS: Record<GoaLineOnboarding['weeklyTime'], string> = {
+  '1_2': '1–2 hours/week',
+  '3_5': '3–5 hours/week',
+  '6_10': '6–10 hours/week',
+  '10_plus': '10+ hours/week',
+}
+
+const BUDGET_LABELS: Record<GoaLineOnboarding['monthlyBudget'], string> = {
+  '0': '$0',
+  lt_500: '$100–500/mo',
+  '500_1500': '$500–1,500/mo',
+  '1500_5000': '$1,500–5,000/mo',
+  '5000_plus': '$5,000+/mo',
+}
+
+const DEMAND_LABELS: Record<GoaLineOnboarding['demandLevel'], string> = {
+  starting: 'Just starting',
+  some: 'Some demand',
+  steady: 'Steady demand',
+  busy: 'Busy (quality focus)',
+}
+
+const CONVERSION_LABELS: Record<GoaLineOnboarding['conversionConfidence'], string> = {
+  high: 'High (25–40% lead→customer)',
+  medium: 'Medium (10–25%)',
+  low: 'Low (3–10%)',
+}
+
+export function getAssumptionsList(o: GoaLineOnboarding): { label: string; value: string }[] {
+  const avgRev = o.avgRevenuePerCustomerBand === 'not_sure' && o.priceRangeBand
+    ? PRICE_RANGE_MIDPOINT[o.priceRangeBand]
+    : AVG_REVENUE_MIDPOINT[o.avgRevenuePerCustomerBand]
+  const items: { label: string; value: string }[] = [
+    { label: 'Avg. value per customer', value: avgRev != null ? `~$${avgRev}` : 'From questionnaire' },
+    { label: 'Conversion confidence', value: CONVERSION_LABELS[o.conversionConfidence] },
+    { label: 'Demand baseline', value: DEMAND_LABELS[o.demandLevel] },
+    { label: 'Time commitment', value: WEEKLY_LABELS[o.weeklyTime] },
+    { label: 'Monthly budget', value: BUDGET_LABELS[o.monthlyBudget] },
+    { label: 'Purchase path', value: o.purchasePath.replace(/_/g, ' ') },
+  ]
+  return items
 }
 
 // —— Monthly targets (for report bar chart: leads + customers per month) ——
