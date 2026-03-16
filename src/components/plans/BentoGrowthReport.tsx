@@ -487,7 +487,10 @@ export default function BentoGrowthReport({
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                       <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-25} textAnchor="end" height={50} interval={0} />
                       <YAxis domain={[0, 4]} tick={{ fontSize: 12 }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: 12 }} formatter={(v: number) => [v, '']} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: 12 }}
+                        formatter={(value: number | undefined) => [value ?? 0, '']}
+                      />
                       <Bar dataKey="effort" name="Effort (1=low, 3=high)" fill="#94a3b8" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="impact" name="Impact (1=low, 3=high)" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                     </BarChart>
