@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
-import { getQuickWins, computeMoneyMap } from '@/lib/growth-roadmap-calc';
+import { getQuickWins, computeMoneyMap, getSprintTasks } from '@/lib/growth-roadmap-calc';
 import type { GoaLineOnboarding } from '@/types/goaline-onboarding';
 import { FileText, CheckCircle2, ArrowRight, Sparkles } from 'lucide-react';
 
@@ -27,6 +27,7 @@ export default async function DashboardHome() {
   const quickWins = onboarding ? getQuickWins(onboarding) : [];
   const moneyMap = onboarding ? computeMoneyMap(onboarding) : null;
   const targetDisplay = moneyMap?.targetDisplay;
+  const nextAction = onboarding ? getSprintTasks(onboarding).phase1[0]?.title : null;
 
   return (
     <div className="p-8 space-y-8">
@@ -53,6 +54,11 @@ export default async function DashboardHome() {
                     {targetDisplay && (
                       <p className="text-slate-500 text-sm mt-0.5">90-day target: {targetDisplay}</p>
                     )}
+                    {nextAction && (
+                      <p className="text-slate-500 text-xs mt-1">
+                        Next action: <span className="font-semibold text-slate-800">{nextAction}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
                 <Link
@@ -75,10 +81,11 @@ export default async function DashboardHome() {
               <ul className="space-y-3">
                 {quickWins.map((win, i) => (
                   <li key={i} className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="w-6 h-6 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-xs font-bold shrink-0">
-                      {i + 1}
-                    </span>
-                    <span className="text-slate-800 font-medium">{win}</span>
+                    <input
+                      type="checkbox"
+                      className="mt-1 w-4 h-4 rounded border-slate-300 text-green-600 focus:ring-green-500"
+                    />
+                    <span className="text-slate-800 font-medium flex-1">{win}</span>
                   </li>
                 ))}
               </ul>
